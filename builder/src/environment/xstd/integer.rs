@@ -222,6 +222,20 @@ macro_rules! register_endian_bytes {
     };
 }
 
+// For u8, there's only one byte so endianness doesn't matter
+// We provide a simple to_bytes() method
+fn to_bytes_u8<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+    let value = zelf?.as_u8()?;
+    Ok(SysCallResult::Return(ValueCell::Bytes(vec![value]).into()))
+}
+
+fn from_bytes_u8<M>(_: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+    let value = params[0].as_bytes()?;
+    let slice: &[u8] = &value;
+    let v = u8::from_ne_bytes(slice.try_into().context("invalid bytes size")?);
+    Ok(SysCallResult::Return(Primitive::U8(v).into()))
+}
+
 macro_rules! min {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
@@ -472,6 +486,24 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
 
     // Register all 'to endian bytes' (be/le) functions for all types
     // Returns a Bytes type
+    // For U8, we use to_bytes/from_bytes since endianness doesn't apply to single bytes
+    env.register_native_function(
+        "to_bytes",
+        Some(Type::U8),
+        vec![],
+        FunctionHandler::Sync(to_bytes_u8),
+        10,
+        Some(Type::Bytes)
+    );
+    env.register_static_function(
+        "from_bytes",
+        Type::U8,
+        vec![("bytes", Type::Bytes)],
+        FunctionHandler::Sync(from_bytes_u8),
+        10,
+        Some(Type::U8)
+    );
+
     register_endian_bytes!(env, U16, u16);
     register_endian_bytes!(env, U32, u32);
     register_endian_bytes!(env, U64, u64);
